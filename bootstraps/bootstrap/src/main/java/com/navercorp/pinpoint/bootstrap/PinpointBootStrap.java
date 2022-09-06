@@ -16,13 +16,6 @@
 
 package com.navercorp.pinpoint.bootstrap;
 
-import com.navercorp.pinpoint.ProductInfo;
-import com.navercorp.pinpoint.bootstrap.agentdir.AgentDirBaseClassPathResolver;
-import com.navercorp.pinpoint.bootstrap.agentdir.AgentDirectory;
-import com.navercorp.pinpoint.bootstrap.agentdir.BootDir;
-import com.navercorp.pinpoint.bootstrap.agentdir.ClassPathResolver;
-import com.navercorp.pinpoint.bootstrap.agentdir.JavaAgentPathResolver;
-
 import java.lang.instrument.Instrumentation;
 import java.nio.file.Path;
 import java.util.List;
@@ -30,155 +23,164 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.jar.JarFile;
 
+import com.navercorp.pinpoint.ProductInfo;
+import com.navercorp.pinpoint.bootstrap.agentdir.AgentDirBaseClassPathResolver;
+import com.navercorp.pinpoint.bootstrap.agentdir.AgentDirectory;
+import com.navercorp.pinpoint.bootstrap.agentdir.BootDir;
+import com.navercorp.pinpoint.bootstrap.agentdir.ClassPathResolver;
+import com.navercorp.pinpoint.bootstrap.agentdir.JavaAgentPathResolver;
+
 /**
  * @author emeroad
  * @author netspider
  */
 public class PinpointBootStrap {
 
-    private static final BootLogger logger = BootLogger.getLogger(PinpointBootStrap.class);
+  private static final BootLogger logger = BootLogger.getLogger(PinpointBootStrap.class);
 
-    private static final LoadState STATE = new LoadState();
+  private static final LoadState STATE = new LoadState();
 
-    public static void premain(String agentArgs, Instrumentation instrumentation) {
+  public static void premain(String agentArgs, Instrumentation instrumentation) {
 
-        if (disabled()) {
-            if (logger.isWarnEnabled()) {
-                logger.warn("PinPoint is disabled via Env/Property.");
-            }
-            return;
-        }
-
-        final boolean success = STATE.start();
-        if (!success) {
-            logger.warn("pinpoint-bootstrap already started. skipping agent loading.");
-            return;
-        }
-
-        PinpointBootStrap bootStrap = new PinpointBootStrap(agentArgs, instrumentation);
-        bootStrap.start();
-
+    if (disabled()) {
+      if (logger.isWarnEnabled()) {
+        logger.warn("PinPoint is disabled via Env/Property.");
+      }
+      return;
     }
 
-    private static boolean disabled() {
-        final String env = System.getenv("PINPOINT_DISABLE");
-        final String prop = System.getProperty("pinpoint.disable");
-        return env != null || prop != null;
+    final boolean success = STATE.start();
+    if (!success) {
+      logger.warn("pinpoint-bootstrap already started. skipping agent loading.");
+      return;
     }
 
-    private final String agentArgs;
-    private final Instrumentation instrumentation;
+    PinpointBootStrap bootStrap = new PinpointBootStrap(agentArgs, instrumentation);
+    bootStrap.start();
+  }
 
-    private PinpointBootStrap(String agentArgs, Instrumentation instrumentation) {
-        this.agentArgs = agentArgs;
-        this.instrumentation = Objects.requireNonNull(instrumentation, "instrumentation");
+  private static boolean disabled() {
+    final String env = System.getenv("PINPOINT_DISABLE");
+    final String prop = System.getProperty("pinpoint.disable");
+    return env != null || prop != null;
+  }
+
+  private final String agentArgs;
+  private final Instrumentation instrumentation;
+
+  private PinpointBootStrap(String agentArgs, Instrumentation instrumentation) {
+    this.agentArgs = agentArgs;
+    this.instrumentation = Objects.requireNonNull(instrumentation, "instrumentation");
+  }
+
+  private void start() {
+    logger.info(ProductInfo.NAME + " agentArgs:" + agentArgs);
+    logger.info("PinpointBootStrap.ClassLoader:" + PinpointBootStrap.class.getClassLoader());
+    logger.info("ContextClassLoader:" + Thread.currentThread().getContextClassLoader());
+
+    final JavaAgentPathResolver javaAgentPathResolver =
+        JavaAgentPathResolver.newJavaAgentPathResolver();
+    final Path agentPath = javaAgentPathResolver.resolveJavaAgentPath();
+    logger.info("JavaAgentPath:" + agentPath);
+    if (!agentPath.toFile().exists()) {
+      logger.warn("AgentPath not found path:" + agentPath);
     }
 
-
-    private void start() {
-        logger.info(ProductInfo.NAME + " agentArgs:" + agentArgs);
-        logger.info("PinpointBootStrap.ClassLoader:" + PinpointBootStrap.class.getClassLoader());
-        logger.info("ContextClassLoader:" + Thread.currentThread().getContextClassLoader());
-
-        final JavaAgentPathResolver javaAgentPathResolver = JavaAgentPathResolver.newJavaAgentPathResolver();
-        final Path agentPath = javaAgentPathResolver.resolveJavaAgentPath();
-        logger.info("JavaAgentPath:" + agentPath);
-        if (!agentPath.toFile().exists()) {
-            logger.warn("AgentPath not found path:" + agentPath);
-        }
-
-        if (Object.class.getClassLoader() != PinpointBootStrap.class.getClassLoader()) {
-            // TODO bug : location is null
-            logger.warn("Invalid pinpoint-bootstrap.jar:" + agentArgs);
-            return;
-        }
-
-        final Map<String, String> agentArgsMap = argsToMap(agentArgs);
-
-        final ClassPathResolver classPathResolver = new AgentDirBaseClassPathResolver(agentPath);
-
-        final AgentDirectory agentDirectory = resolveAgentDir(classPathResolver);
-        if (agentDirectory == null) {
-            logger.warn("Agent Directory Verify fail. skipping agent loading.");
-            logPinpointAgentLoadFail();
-            return;
-        }
-        BootDir bootDir = agentDirectory.getBootDir();
-        appendToBootstrapClassLoader(instrumentation, bootDir);
-
-        ClassLoader parentClassLoader = getParentClassLoader();
-        final ModuleBootLoader moduleBootLoader = loadModuleBootLoader(instrumentation, parentClassLoader);
-        PinpointStarter bootStrap = new PinpointStarter(parentClassLoader, agentArgsMap, agentDirectory, instrumentation, moduleBootLoader);
-        if (!bootStrap.start()) {
-            logPinpointAgentLoadFail();
-        }
+    if (Object.class.getClassLoader() != PinpointBootStrap.class.getClassLoader()) {
+      // TODO bug : location is null
+      logger.warn("Invalid pinpoint-bootstrap.jar:" + agentArgs);
+      return;
     }
 
+    final Map<String, String> agentArgsMap = argsToMap(agentArgs);
 
+    final ClassPathResolver classPathResolver = new AgentDirBaseClassPathResolver(agentPath);
 
-    private ModuleBootLoader loadModuleBootLoader(Instrumentation instrumentation, ClassLoader parentClassLoader) {
-        if (!ModuleUtils.isModuleSupported()) {
-            return null;
-        }
-        logger.info("java9 module detected");
-        logger.info("ModuleBootLoader start");
-        ModuleBootLoader moduleBootLoader = new ModuleBootLoader(instrumentation, parentClassLoader);
-        moduleBootLoader.loadModuleSupport();
-        return moduleBootLoader;
+    final AgentDirectory agentDirectory = resolveAgentDir(classPathResolver);
+    if (agentDirectory == null) {
+      logger.warn("Agent Directory Verify fail. skipping agent loading.");
+      logPinpointAgentLoadFail();
+      return;
+    }
+    BootDir bootDir = agentDirectory.getBootDir();
+    appendToBootstrapClassLoader(instrumentation, bootDir);
+
+    ClassLoader parentClassLoader = getParentClassLoader();
+    final ModuleBootLoader moduleBootLoader =
+        loadModuleBootLoader(instrumentation, parentClassLoader);
+    PinpointStarter bootStrap =
+        new PinpointStarter(
+            parentClassLoader, agentArgsMap, agentDirectory, instrumentation, moduleBootLoader);
+    if (!bootStrap.start()) {
+      logPinpointAgentLoadFail();
+    }
+  }
+
+  private ModuleBootLoader loadModuleBootLoader(
+      Instrumentation instrumentation, ClassLoader parentClassLoader) {
+    if (!ModuleUtils.isModuleSupported()) {
+      return null;
+    }
+    logger.info("java9 module detected");
+    logger.info("ModuleBootLoader start");
+    ModuleBootLoader moduleBootLoader = new ModuleBootLoader(instrumentation, parentClassLoader);
+    moduleBootLoader.loadModuleSupport();
+    return moduleBootLoader;
+  }
+
+  private AgentDirectory resolveAgentDir(ClassPathResolver classPathResolver) {
+    try {
+      AgentDirectory agentDir = classPathResolver.resolve();
+      return agentDir;
+    } catch (Exception e) {
+      logger.warn("AgentDir resolve fail Caused by:" + e.getMessage(), e);
+      return null;
+    }
+  }
+
+  private ClassLoader getParentClassLoader() {
+    ClassLoader classLoader = getPinpointBootStrapClassLoader();
+    if (classLoader == Object.class.getClassLoader()) {
+      logger.info("parentClassLoader:BootStrapClassLoader:" + classLoader);
+    } else {
+      logger.info("parentClassLoader:" + classLoader);
     }
 
-    private AgentDirectory resolveAgentDir(ClassPathResolver classPathResolver) {
-        try {
-            AgentDirectory agentDir = classPathResolver.resolve();
-            return agentDir;
-        } catch(Exception e) {
-            logger.warn("AgentDir resolve fail Caused by:" + e.getMessage(), e);
-            return null;
-        }
+    // skychen add code
+    if (null == classLoader) {
+      classLoader = ClassLoader.getSystemClassLoader().getParent();
+      logger.info("[Modify][skychen]parentClassLoader:" + classLoader);
     }
 
+    return classLoader;
+  }
 
-    private ClassLoader getParentClassLoader() {
-        final ClassLoader classLoader = getPinpointBootStrapClassLoader();
-        if (classLoader == Object.class.getClassLoader()) {
-            logger.info("parentClassLoader:BootStrapClassLoader:" + classLoader );
-        } else {
-            logger.info("parentClassLoader:" + classLoader);
-        }
-        return classLoader;
+  private ClassLoader getPinpointBootStrapClassLoader() {
+    return PinpointBootStrap.class.getClassLoader();
+  }
+
+  private Map<String, String> argsToMap(String agentArgs) {
+    ArgsParser argsParser = new ArgsParser();
+    Map<String, String> agentArgsMap = argsParser.parse(agentArgs);
+    if (!agentArgsMap.isEmpty()) {
+      logger.info("agentParameter:" + agentArgs);
     }
+    return agentArgsMap;
+  }
 
-    private ClassLoader getPinpointBootStrapClassLoader() {
-        return PinpointBootStrap.class.getClassLoader();
+  private void appendToBootstrapClassLoader(Instrumentation instrumentation, BootDir bootDir) {
+    List<JarFile> jarFiles = bootDir.openJarFiles();
+    for (JarFile jarFile : jarFiles) {
+      logger.info("appendToBootstrapClassLoader:" + jarFile.getName());
+      instrumentation.appendToBootstrapClassLoaderSearch(jarFile);
     }
+  }
 
-
-    private Map<String, String> argsToMap(String agentArgs) {
-        ArgsParser argsParser = new ArgsParser();
-        Map<String, String> agentArgsMap = argsParser.parse(agentArgs);
-        if (!agentArgsMap.isEmpty()) {
-            logger.info("agentParameter:" + agentArgs);
-        }
-        return agentArgsMap;
-    }
-
-    private void appendToBootstrapClassLoader(Instrumentation instrumentation, BootDir bootDir) {
-        List<JarFile> jarFiles = bootDir.openJarFiles();
-        for (JarFile jarFile : jarFiles) {
-            logger.info("appendToBootstrapClassLoader:" + jarFile.getName());
-            instrumentation.appendToBootstrapClassLoaderSearch(jarFile);
-        }
-    }
-
-
-
-    private static void logPinpointAgentLoadFail() {
-        final String errorLog =
-                "*****************************************************************************\n" +
-                        "* Pinpoint Agent load failure\n" +
-                        "*****************************************************************************";
-        System.err.println(errorLog);
-    }
-
-
+  private static void logPinpointAgentLoadFail() {
+    final String errorLog =
+        "*****************************************************************************\n"
+            + "* Pinpoint Agent load failure\n"
+            + "*****************************************************************************";
+    System.err.println(errorLog);
+  }
 }

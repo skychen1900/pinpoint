@@ -16,50 +16,50 @@
 
 package com.navercorp.pinpoint.plugin.websphere.interceptor;
 
+import java.util.Collection;
+import java.util.Collections;
+
 import com.ibm.websphere.servlet.request.IRequest;
 import com.navercorp.pinpoint.bootstrap.plugin.request.RequestAdaptor;
 import com.navercorp.pinpoint.bootstrap.util.NetworkUtils;
 import com.navercorp.pinpoint.common.plugin.util.HostAndPort;
 
-import java.util.Collection;
-import java.util.Collections;
-
 /**
  * @author Woonduk Kang(emeroad)
  */
 public class IRequestAdaptor implements RequestAdaptor<IRequest> {
-    @Override
-    public String getHeader(IRequest request, String name) {
-        return request.getHeader(name);
-    }
+	@Override
+	public String getHeader(IRequest request, String name) {
+		return request.getHeader(name);
+	}
 
-    @Override
-    public Collection<String> getHeaderNames(IRequest request) {
-        //todo to be replaced with websphere IRequest.getHeaderNames
-        //throw new UnsupportedOperationException("not implemented yet!");
-        //request.getHeaderNames() return enumeration of String ?
-        return Collections.emptyList();
-    }
+	@Override
+	public Collection<String> getHeaderNames(IRequest request) {
+		// todo to be replaced with websphere IRequest.getHeaderNames
+		// throw new UnsupportedOperationException("not implemented yet!");
+		// request.getHeaderNames() return enumeration of String ?
+		return Collections.emptyList();
+	}
 
-    @Override
-    public String getRpcName(IRequest request) {
-        return request.getRequestURI();
-    }
+	@Override
+	public String getRpcName(IRequest request) {
+		return request.getRequestURI();
+	}
 
-    @Override
-    public String getEndPoint(IRequest request) {
-        final int port = request.getServerPort();
-        final String endPoint = HostAndPort.toHostAndPortString(request.getServerName(), port);
-        return endPoint;
-    }
+	@Override
+	public String getEndPoint(IRequest request) {
+		final int port = request.getServerPort();
+		final String endPoint = HostAndPort.toHostAndPortString(request.getServerName(), port);
+		return endPoint;
+	}
 
-    @Override
-    public String getRemoteAddress(IRequest request) {
-        return request.getRemoteAddr();
-    }
+	@Override
+	public String getRemoteAddress(IRequest request) {
+		return request.getRemoteAddr();
+	}
 
-    @Override
-    public String getAcceptorHost(IRequest request) {
-        return NetworkUtils.getHostFromURL(request.getRequestURI());
-    }
+	@Override
+	public String getAcceptorHost(IRequest request) {
+		return NetworkUtils.getHostFromURL(request.getRequestURI());
+	}
 }

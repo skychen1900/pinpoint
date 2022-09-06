@@ -14,30 +14,40 @@
  */
 package com.navercorp.pinpoint.plugin.websphere;
 
-import com.navercorp.pinpoint.bootstrap.resolver.condition.MainClassCondition;
-
 import java.util.Collections;
 import java.util.List;
 
+import com.navercorp.pinpoint.bootstrap.logging.PLogger;
+import com.navercorp.pinpoint.bootstrap.logging.PLoggerFactory;
+import com.navercorp.pinpoint.bootstrap.resolver.condition.MainClassCondition;
+
 /**
+ * 应用类型检测器
+ * 
  * @author sjmittal
  * @author jaehong.kim
  */
 public class WebsphereDetector {
 
-    private static final String DEFAULT_EXPECTED_MAIN_CLASS = "com.ibm.wsspi.bootstrap.WSPreLauncher";
-    private final List<String> expectedMainClasses;
+	private final PLogger logger = PLoggerFactory.getLogger(this.getClass());
 
-    public WebsphereDetector(List<String> expectedMainClasses) {
-        if (expectedMainClasses == null || expectedMainClasses.isEmpty()) {
-            this.expectedMainClasses = Collections.singletonList(DEFAULT_EXPECTED_MAIN_CLASS);
-        } else {
-            this.expectedMainClasses = expectedMainClasses;
-        }
-    }
+	// private static final String DEFAULT_EXPECTED_MAIN_CLASS =
+	// "com.ibm.wsspi.bootstrap.WSPreLauncher";
+	// openliberty 対応
+	private static final String DEFAULT_EXPECTED_MAIN_CLASS = "com.ibm.ws.kernel.boot.cmdline.EnvCheck";
+	private final List<String> expectedMainClasses;
 
-    public boolean detect() {
-        String bootstrapMainClass = MainClassCondition.INSTANCE.getValue();
-        return expectedMainClasses.contains(bootstrapMainClass);
-    }
+	public WebsphereDetector(List<String> expectedMainClasses) {
+		if (expectedMainClasses == null || expectedMainClasses.isEmpty()) {
+			this.expectedMainClasses = Collections.singletonList(DEFAULT_EXPECTED_MAIN_CLASS);
+		} else {
+			this.expectedMainClasses = expectedMainClasses;
+		}
+	}
+
+	public boolean detect() {
+		String bootstrapMainClass = MainClassCondition.INSTANCE.getValue();
+		logger.debug("Bootstrap class: " + bootstrapMainClass);
+		return expectedMainClasses.contains(bootstrapMainClass);
+	}
 }
